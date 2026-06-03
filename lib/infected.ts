@@ -13,6 +13,7 @@ export const QUOTE_MINT = "So11111111111111111111111111111111111111112"; // wSOL
 
 export const LINKS = {
   x: "https://x.com/InfectedDotDev",
+  telegram: "https://t.me/Infected_Portal",
   jupiter: `https://jup.ag/?buy=${INFECTED.mint}&sell=${QUOTE_MINT}`,
   dexscreener: `https://dexscreener.com/solana/${INFECTED.mint}`,
   solscanToken: `https://solscan.io/token/${INFECTED.mint}`,

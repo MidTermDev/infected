@@ -101,6 +101,7 @@ export default function Home() {
           <a href={LINKS.jupiter} target="_blank" rel="noopener noreferrer" className="btn-toxic w-full !py-2.5 text-sm">Buy on Jupiter ↗</a>
           <div className="flex gap-2">
             <a href={LINKS.x} target="_blank" rel="noopener noreferrer" className="btn-ghost flex-1 !py-2 text-sm">𝕏</a>
+            <a href={LINKS.telegram} target="_blank" rel="noopener noreferrer" className="btn-ghost flex-1 !py-2 text-sm">TG</a>
             <a href={LINKS.dexscreener} target="_blank" rel="noopener noreferrer" className="btn-ghost flex-1 !py-2 text-sm">chart</a>
             <a href={LINKS.hookRepo} target="_blank" rel="noopener noreferrer" className="btn-ghost flex-1 !py-2 text-sm">src</a>
           </div>
@@ -225,6 +226,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-2">
               <a className="btn-toxic !py-2 text-sm" href={LINKS.jupiter} target="_blank" rel="noopener noreferrer">Buy on Jupiter ↗</a>
               <a className="btn-ghost !py-2 text-sm" href={LINKS.x} target="_blank" rel="noopener noreferrer">𝕏 follow</a>
+              <a className="btn-ghost !py-2 text-sm" href={LINKS.telegram} target="_blank" rel="noopener noreferrer">Telegram ↗</a>
               <a className="btn-ghost !py-2 text-sm" href={LINKS.dexscreener} target="_blank" rel="noopener noreferrer">chart ↗</a>
               <a className="btn-ghost !py-2 text-sm" href={LINKS.solscanToken} target="_blank" rel="noopener noreferrer">token ↗</a>
               <a className="btn-ghost !py-2 text-sm" href={LINKS.hookRepo} target="_blank" rel="noopener noreferrer">hook source ↗</a>
