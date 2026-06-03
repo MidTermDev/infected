@@ -16,7 +16,6 @@ const NAV: { id: string; label: string; sub?: boolean }[] = [
   { id: "docs-execute", label: "Execute logic", sub: true },
   { id: "docs-accounts", label: "Accounts & PDAs", sub: true },
   { id: "docs-instructions", label: "Instructions", sub: true },
-  { id: "docs-integration", label: "Launching it", sub: true },
   { id: "docs-properties", label: "Properties", sub: true },
   { id: "docs-verified", label: "Verified", sub: true },
   { id: "faq", label: "FAQ" },
@@ -177,7 +176,7 @@ export default function Home() {
           <section id="hook" className="scroll-mt-20 py-14">
             <div className="font-mono text-xs text-toxic/80 tracking-widest uppercase">documentation</div>
             <h2 className="font-display font-700 text-3xl sm:text-4xl mt-1 mb-2">transfer-hook docs</h2>
-            <p className="text-mute mb-10 max-w-2xl">Exactly how the on-chain rule works — read it, verify it, fork it.</p>
+            <p className="text-mute mb-10 max-w-2xl">Exactly how the on-chain rule works — read it and verify it yourself.</p>
             <HookDocs />
           </section>
 
