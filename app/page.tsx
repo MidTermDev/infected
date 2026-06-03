@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Faq } from "@/components/Faq";
 import { HookDocs } from "@/components/HookDocs";
+import { Infect } from "@/components/Infect";
+import { OutbreakMap } from "@/components/OutbreakMap";
 import { INFECTED, LINKS } from "@/lib/infected";
 
 const CA = INFECTED.mint;
@@ -10,6 +12,8 @@ const CA = INFECTED.mint;
 const NAV: { id: string; label: string; sub?: boolean }[] = [
   { id: "top", label: "Overview" },
   { id: "spread", label: "How it spreads" },
+  { id: "infect", label: "Infect yourself" },
+  { id: "map", label: "Outbreak map" },
   { id: "hook", label: "Transfer hook" },
   { id: "docs-rule", label: "The rule", sub: true },
   { id: "docs-detection", label: "Detecting a buy", sub: true },
@@ -133,9 +137,12 @@ export default function Home() {
                   little. Then you can buy, and infect others. 🦠
                 </p>
                 <div className="flex flex-wrap gap-3 mt-6">
-                  <a href={LINKS.jupiter} target="_blank" rel="noopener noreferrer" className="btn-toxic">Buy on Jupiter →</a>
-                  <a href="#spread" className="btn-ghost">how it works</a>
+                  <a href="#infect" className="btn-toxic">🧫 Infect yourself →</a>
+                  <a href={LINKS.jupiter} target="_blank" rel="noopener noreferrer" className="btn-ghost">Buy on Jupiter ↗</a>
                 </div>
+                <a href="#infect" className="mt-3 inline-block text-sm text-toxic/90 hover:text-toxic">
+                  → no one will infect you? dose yourself at the Infection Station
+                </a>
               </div>
               <div className="relative grid place-items-center sm:w-56">
                 <div className="absolute h-44 w-44 rounded-full ring-toxic" />
@@ -168,6 +175,28 @@ export default function Home() {
                 Send $VIRUS to fresh wallets to infect them. Each new host can buy and spread it further.
               </Phase>
             </ol>
+          </section>
+
+          <Divider />
+
+          {/* INFECT YOURSELF */}
+          <section id="infect" className="scroll-mt-20 py-14">
+            <div className="font-mono text-xs text-toxic/80 tracking-widest uppercase">last resort</div>
+            <h2 className="font-display font-700 text-3xl sm:text-4xl mt-1 mb-2">infect yourself</h2>
+            <p className="text-mute mb-8 max-w-2xl">
+              Can&apos;t find anyone to infect you? Pay the station and dose yourself. The price climbs with
+              every infection — the longer you wait, the more it costs.
+            </p>
+            <Infect />
+          </section>
+
+          <Divider />
+
+          {/* OUTBREAK MAP */}
+          <section id="map" className="scroll-mt-20 py-14">
+            <div className="font-mono text-xs text-toxic/80 tracking-widest uppercase">surveillance</div>
+            <h2 className="font-display font-700 text-3xl sm:text-4xl mt-1 mb-6">outbreak map</h2>
+            <OutbreakMap />
           </section>
 
           <Divider />
