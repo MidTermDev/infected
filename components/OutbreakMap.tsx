@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { useConnection } from "@solana/wallet-adapter-react";
@@ -9,11 +9,17 @@ import { INFECTED } from "@/lib/infected";
 
 const MINT = new PublicKey(INFECTED.mint);
 const INDEXER = process.env.NEXT_PUBLIC_INDEXER_URL || "https://api.infected.dev";
+const COL = { zero: "#ff2e88", station: "#2ce5d6", host: "#9dff1f", edge: "#9dff1f" };
 
-interface Node { address: string; balance: number; infector: string | null; kind: "zero" | "station" | "host"; }
-interface Graph { nodes: Node[]; edges: { from: string; to: string }[]; holders: number; source: "indexer" | "rpc"; }
+type Kind = "zero" | "station" | "host";
+interface RawNode { address: string; balance: number; infector: string | null; kind: Kind; }
+interface Graph { nodes: RawNode[]; edges: { from: string; to: string }[]; holders: number; source: "indexer" | "rpc"; }
 
-// Preferred: the lineage indexer (real infector → host edges).
+interface Sim {
+  address: string; balance: number; kind: Kind; infector: string | null;
+  x: number; y: number; vx: number; vy: number; r: number; depth: number;
+}
+
 async function fromIndexer(): Promise<Graph | null> {
   try {
     const r = await fetch(`${INDEXER}/graph`, { signal: AbortSignal.timeout(6000) });
@@ -23,8 +29,6 @@ async function fromIndexer(): Promise<Graph | null> {
     return { nodes: g.nodes, edges: g.edges ?? [], holders: g.holders ?? g.nodes.length, source: "indexer" };
   } catch { return null; }
 }
-
-// Fallback: list holders straight from the RPC (no lineage → spread from patient zero).
 async function fromRpc(rpc: string): Promise<Graph> {
   const body = { jsonrpc: "2.0", id: 1, method: "getProgramAccounts", params: [TOKEN_2022_PROGRAM_ID.toBase58(),
     { encoding: "base64", dataSlice: { offset: 0, length: 72 }, filters: [{ memcmp: { offset: 0, bytes: MINT.toBase58() } }] }] };
@@ -37,101 +41,253 @@ async function fromRpc(rpc: string): Promise<Graph> {
     const owner = new PublicKey(buf.subarray(32, 64)).toBase58();
     byOwner[owner] = (byOwner[owner] || 0) + Number(buf.readBigUInt64LE(64));
   }
-  const nodes: Node[] = Object.entries(byOwner).filter(([, b]) => b > 0)
+  const nodes: RawNode[] = Object.entries(byOwner).filter(([, b]) => b > 0)
     .map(([address, balance]) => ({ address, balance, infector: null, kind: address === INFECTED.creator ? "zero" : "host" }));
   return { nodes, edges: [], holders: nodes.length, source: "rpc" };
 }
 
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
 export function OutbreakMap() {
   const { connection } = useConnection();
-  const [graph, setGraph] = useState<Graph | null | "error">(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+
+  const sim = useRef<Sim[]>([]);
+  const edges = useRef<{ a: number; b: number; teal: boolean }[]>([]);
+  const idx = useRef<Record<string, number>>({});
+  const cam = useRef({ zoom: 1, x: 0, y: 0 });
+  const hover = useRef<number>(-1);
+  const drag = useRef<{ on: boolean; px: number; py: number }>({ on: false, px: 0, py: 0 });
+  const raf = useRef(0);
+
+  const [status, setStatus] = useState<"loading" | "empty" | "error" | "ok">("loading");
+  const [stats, setStats] = useState({ infected: 0, links: 0, biggest: 0, source: "" as string });
+
+  const build = useCallback((g: Graph) => {
+    const W = wrapRef.current?.clientWidth ?? 760;
+    const H = 460, cx = W / 2, cy = H / 2;
+    const nodes = [...g.nodes].sort((a, b) => b.balance - a.balance).slice(0, 300);
+    const max = Math.max(1, ...nodes.map((n) => n.balance));
+    const map: Record<string, number> = {};
+    const arr: Sim[] = nodes.map((n, i) => {
+      map[n.address] = i;
+      const r = n.kind === "zero" ? 16 : 4 + 16 * Math.sqrt(n.balance / max);
+      const ang = i * 2.39996, rad = n.kind === "zero" ? 0 : 30 + (i % 40) * 6;
+      return { ...n, r, depth: 0, x: cx + rad * Math.cos(ang) + (Math.random() - 0.5) * 8, y: cy + rad * Math.sin(ang) + (Math.random() - 0.5) * 8, vx: 0, vy: 0 };
+    });
+    // edges (real lineage, or synth burst from zero)
+    let E: { a: number; b: number; teal: boolean }[] = [];
+    if (g.edges.length) {
+      for (const e of g.edges) { const a = map[e.from], b = map[e.to]; if (a != null && b != null && a !== b) E.push({ a, b, teal: arr[a].kind === "station" }); }
+    }
+    if (!E.length) {
+      const z = arr.findIndex((n) => n.kind === "zero");
+      const root = z >= 0 ? z : 0;
+      arr.forEach((_, i) => { if (i !== root) E.push({ a: root, b: i, teal: false }); });
+    }
+    // BFS depth from zero (for layout seeding)
+    const adj: number[][] = arr.map(() => []);
+    for (const e of E) { adj[e.a].push(e.b); }
+    const z = arr.findIndex((n) => n.kind === "zero");
+    if (z >= 0) {
+      const q = [z]; arr[z].depth = 0; const seen = new Set([z]);
+      while (q.length) { const u = q.shift()!; for (const v of adj[u]) if (!seen.has(v)) { seen.add(v); arr[v].depth = arr[u].depth + 1; q.push(v); } }
+    }
+    sim.current = arr; edges.current = E; idx.current = map;
+    cam.current = { zoom: 1, x: 0, y: 0 }; hover.current = -1;
+    setStats({ infected: g.holders, links: g.edges.length, biggest: max, source: g.source });
+    setStatus(arr.length ? "ok" : "empty");
+    // warm up the layout
+    for (let k = 0; k < 220; k++) step(W, H);
+  }, []);
 
   const load = useCallback(async () => {
     const g = (await fromIndexer()) ?? (await fromRpc(connection.rpcEndpoint).catch(() => null));
-    setGraph(g ?? "error");
-  }, [connection]);
+    if (!g) { setStatus("error"); return; }
+    if (!g.nodes.length) { setStats({ infected: 0, links: 0, biggest: 0, source: g.source }); setStatus("empty"); sim.current = []; edges.current = []; return; }
+    build(g);
+  }, [connection, build]);
 
   useEffect(() => { load(); const id = setInterval(load, 30_000); return () => clearInterval(id); }, [load]);
 
-  const W = 760, H = 460, cx = W / 2, cy = H / 2;
-
-  const { laid, edges, total, source } = useMemo(() => {
-    if (!graph || graph === "error") return { laid: [], edges: [], total: 0, source: "" as const };
-    const sorted = [...graph.nodes].sort((a, b) => (b.kind === "zero" ? 1 : 0) - (a.kind === "zero" ? 1 : 0) || b.balance - a.balance).slice(0, 150);
-    const maxAmt = Math.max(1, ...sorted.map((n) => n.balance));
-    const pos: Record<string, { x: number; y: number; r: number; kind: string; address: string; balance: number }> = {};
-    const laid = sorted.map((n, i) => {
-      const r = n.kind === "zero" ? 18 : 5 + 20 * Math.sqrt(n.balance / maxAmt);
-      let x = cx, y = cy;
-      if (n.kind !== "zero") {
-        const ring = 1 + Math.floor(i / 14);
-        const radius = 70 + ring * 50 + (i % 3) * 7;
-        const ang = i * 2.399963;
-        x = Math.max(r, Math.min(W - r, cx + radius * Math.cos(ang)));
-        y = Math.max(r, Math.min(H - r, cy + radius * Math.sin(ang)));
+  // physics
+  function step(W: number, H: number) {
+    const n = sim.current; const E = edges.current; const cx = W / 2, cy = H / 2;
+    for (let i = 0; i < n.length; i++) {
+      const a = n[i];
+      for (let j = i + 1; j < n.length; j++) {
+        const b = n[j];
+        let dx = a.x - b.x, dy = a.y - b.y; let d2 = dx * dx + dy * dy; if (d2 < 1) d2 = 1;
+        const f = 520 / d2; const d = Math.sqrt(d2); const fx = (dx / d) * f, fy = (dy / d) * f;
+        a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
       }
-      const node = { x, y, r, kind: n.kind, address: n.address, balance: n.balance };
-      pos[n.address] = node;
-      return node;
-    });
-    // real edges from indexer; else synthesize spread from patient zero
-    let edges: { x1: number; y1: number; x2: number; y2: number; teal: boolean }[] = [];
-    if (graph.edges.length) {
-      edges = graph.edges.map((e) => ({ a: pos[e.from], b: pos[e.to], teal: pos[e.from]?.kind === "station" }))
-        .filter((e) => e.a && e.b).map((e) => ({ x1: e.a.x, y1: e.a.y, x2: e.b.x, y2: e.b.y, teal: e.teal }));
-    } else {
-      const zero = laid.find((n) => n.kind === "zero") ?? { x: cx, y: cy };
-      edges = laid.filter((n) => n.kind !== "zero").map((n) => ({ x1: zero.x, y1: zero.y, x2: n.x, y2: n.y, teal: false }));
+      // center gravity (strong for zero)
+      const g = a.kind === "zero" ? 0.06 : 0.012;
+      a.vx += (cx - a.x) * g; a.vy += (cy - a.y) * g;
     }
-    return { laid, edges, total: graph.holders, source: graph.source };
-  }, [graph]);
+    for (const e of E) {
+      const a = n[e.a], b = n[e.b]; const rest = 46 + (a.r + b.r);
+      let dx = b.x - a.x, dy = b.y - a.y; const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f = (d - rest) * 0.015; const fx = (dx / d) * f, fy = (dy / d) * f;
+      a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+    }
+    for (const a of n) {
+      if (a.kind === "zero") { a.vx *= 0.5; a.vy *= 0.5; }
+      a.vx *= 0.86; a.vy *= 0.86;
+      a.vx = Math.max(-6, Math.min(6, a.vx)); a.vy = Math.max(-6, Math.min(6, a.vy));
+      a.x += a.vx; a.y += a.vy;
+    }
+  }
+
+  // render loop
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const ctx = cv.getContext("2d")!;
+    let t0 = performance.now();
+    const draw = (now: number) => {
+      const W = wrapRef.current?.clientWidth ?? 760, H = 460;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; }
+      const time = (now - t0) / 1000;
+      if (sim.current.length) step(W, H);
+      const n = sim.current, E = edges.current, c = cam.current, hv = hover.current;
+      const sx = (x: number) => (x - W / 2) * c.zoom + W / 2 + c.x;
+      const sy = (y: number) => (y - H / 2) * c.zoom + H / 2 + c.y;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      // backdrop glow
+      const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.6);
+      bg.addColorStop(0, "rgba(157,255,31,0.05)"); bg.addColorStop(1, "rgba(7,11,10,0)");
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+      const neighbor = new Set<number>();
+      if (hv >= 0) { neighbor.add(hv); for (const e of E) { if (e.a === hv) neighbor.add(e.b); if (e.b === hv) neighbor.add(e.a); } }
+
+      // edges + traveling infection pulses
+      for (const e of E) {
+        const a = n[e.a], b = n[e.b]; if (!a || !b) continue;
+        const hot = hv < 0 ? false : (e.a === hv || e.b === hv);
+        ctx.strokeStyle = e.teal ? COL.station : COL.edge;
+        ctx.globalAlpha = hv < 0 ? 0.1 : hot ? 0.55 : 0.03;
+        ctx.lineWidth = hot ? 1.6 : 1;
+        ctx.beginPath(); ctx.moveTo(sx(a.x), sy(a.y)); ctx.lineTo(sx(b.x), sy(b.y)); ctx.stroke();
+        // pulse dot traveling infector -> host
+        if (hv < 0 || hot) {
+          const ph = (time * 0.35 + (e.a * 0.13 + e.b * 0.07)) % 1;
+          const px = sx(a.x + (b.x - a.x) * ph), py = sy(a.y + (b.y - a.y) * ph);
+          ctx.globalAlpha = hv < 0 ? 0.5 : 0.9; ctx.fillStyle = e.teal ? COL.station : COL.edge;
+          ctx.beginPath(); ctx.arc(px, py, hot ? 2.4 : 1.6, 0, 7); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // nodes
+      for (let i = 0; i < n.length; i++) {
+        const a = n[i]; const X = sx(a.x), Y = sy(a.y), R = a.r * c.zoom;
+        const col = COL[a.kind]; const dim = hv >= 0 && !neighbor.has(i);
+        // pulsing halo for zero/station
+        if (a.kind !== "host") {
+          const pr = R + 6 + Math.sin(time * 2 + (a.kind === "zero" ? 0 : 1)) * 4;
+          ctx.globalAlpha = 0.18; ctx.fillStyle = col;
+          ctx.beginPath(); ctx.arc(X, Y, pr, 0, 7); ctx.fill();
+        }
+        ctx.globalAlpha = dim ? 0.18 : 1;
+        ctx.shadowColor = col; ctx.shadowBlur = a.kind === "host" ? 8 : 18;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = 1.5; ctx.strokeStyle = "#070b0a"; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      // labels for hubs + hovered
+      ctx.font = "11px ui-monospace, monospace"; ctx.textAlign = "center";
+      for (let i = 0; i < n.length; i++) {
+        const a = n[i];
+        if (a.kind === "host" && i !== hv) continue;
+        ctx.fillStyle = a.kind === "zero" ? COL.zero : a.kind === "station" ? COL.station : "#eafff2";
+        const label = a.kind === "zero" ? "patient zero" : a.kind === "station" ? "station" : short(a.address);
+        ctx.fillText(label, sx(a.x), sy(a.y) - a.r * c.zoom - 7);
+      }
+      raf.current = requestAnimationFrame(draw);
+    };
+    raf.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf.current);
+  }, []);
+
+  // interaction
+  function pick(e: React.PointerEvent) {
+    const cv = canvasRef.current!, rect = cv.getBoundingClientRect();
+    const W = wrapRef.current?.clientWidth ?? 760, H = 460, c = cam.current;
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let best = -1, bd = 16 * 16;
+    const n = sim.current;
+    for (let i = 0; i < n.length; i++) {
+      const X = (n[i].x - W / 2) * c.zoom + W / 2 + c.x, Y = (n[i].y - H / 2) * c.zoom + H / 2 + c.y;
+      const d = (mx - X) ** 2 + (my - Y) ** 2; const rr = Math.max(10, n[i].r * c.zoom + 6) ** 2;
+      if (d < rr && d < bd) { bd = d; best = i; }
+    }
+    return { best, mx, my };
+  }
+  function onMove(e: React.PointerEvent) {
+    if (drag.current.on) {
+      cam.current.x += e.clientX - drag.current.px; cam.current.y += e.clientY - drag.current.py;
+      drag.current.px = e.clientX; drag.current.py = e.clientY; return;
+    }
+    const { best, mx, my } = pick(e); hover.current = best;
+    const tip = tipRef.current!;
+    if (best >= 0) {
+      const a = sim.current[best];
+      const inf = a.infector ? `infected by ${short(a.infector)}` : a.kind === "zero" ? "the origin" : "—";
+      tip.style.display = "block"; tip.style.left = mx + 14 + "px"; tip.style.top = my + 12 + "px";
+      tip.innerHTML = `<b style="color:${COL[a.kind]}">${a.kind === "zero" ? "PATIENT ZERO" : a.kind === "station" ? "INFECTION STATION" : short(a.address)}</b><br/>${fmt(a.balance / 1e6)} $VIRUS<br/><span style="color:#86a89a">${inf}</span>`;
+      canvasRef.current!.style.cursor = "pointer";
+    } else { tip.style.display = "none"; canvasRef.current!.style.cursor = drag.current.on ? "grabbing" : "grab"; }
+  }
+  function onDown(e: React.PointerEvent) { const { best } = pick(e); if (best < 0) { drag.current = { on: true, px: e.clientX, py: e.clientY }; } }
+  function onUp() { drag.current.on = false; }
+  function onLeave() { hover.current = -1; if (tipRef.current) tipRef.current.style.display = "none"; }
+  function onWheel(e: React.WheelEvent) { const z = cam.current.zoom * (e.deltaY < 0 ? 1.12 : 0.89); cam.current.zoom = Math.max(0.4, Math.min(4, z)); }
 
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="font-display font-700 text-xl">🗺️ live outbreak map</div>
-        <span className="chip">{total ? `${total} infected wallets` : "—"}</span>
+        <div className="flex gap-2 flex-wrap">
+          <span className="chip">{stats.infected ? `${stats.infected} infected` : "—"}</span>
+          <span className="chip">{stats.links ? `${stats.links} infection links` : stats.source === "rpc" ? "lineage: pending" : "—"}</span>
+        </div>
       </div>
       <p className="text-mute text-sm mt-1 mb-4">
-        Every wallet holding $VIRUS, sized by bag.{" "}
-        {source === "indexer" ? <>Edges trace <span className="text-toxic">who infected whom</span>.</> : <>Spreading out from <span className="text-toxic">patient zero</span>.</>}
+        Every wallet holding $VIRUS, sized by bag, pulsing along the chains of infection.
+        Hover to trace a host · scroll to zoom · drag to pan.
       </p>
 
-      {graph === null && <div className="font-mono text-sm text-mute py-10 text-center">scanning the population…</div>}
-      {graph === "error" && <div className="font-mono text-sm text-mute py-10 text-center">couldn&apos;t reach the network — retrying…</div>}
-      {graph && graph !== "error" && total === 0 && (
-        <div className="font-mono text-sm text-mute py-10 text-center">no infections yet — the map fills in as $VIRUS spreads. 🦠</div>
-      )}
+      {status === "loading" && <div className="font-mono text-sm text-mute py-16 text-center">scanning the population…</div>}
+      {status === "error" && <div className="font-mono text-sm text-mute py-16 text-center">couldn&apos;t reach the network — retrying…</div>}
+      {status === "empty" && <div className="font-mono text-sm text-mute py-16 text-center">no infections yet — the map comes alive as $VIRUS spreads. 🦠</div>}
 
-      {laid.length > 0 && (
-        <>
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-line bg-bg2">
-            {edges.map((e, i) => (
-              <line key={i} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke={e.teal ? "#2ce5d6" : "#9dff1f"} strokeOpacity={0.14} strokeWidth={1} />
-            ))}
-            {laid.map((n, i) => {
-              const fill = n.kind === "zero" ? "#ff2e88" : n.kind === "station" ? "#2ce5d6" : "#9dff1f";
-              return (
-                <g key={i}>
-                  <circle cx={n.x} cy={n.y} r={n.r} fill={fill} fillOpacity={n.kind === "host" ? 0.78 : 0.95} stroke="#070b0a" strokeWidth={1.5}>
-                    <title>{`${n.address}\n${n.balance.toLocaleString()} (raw)`}</title>
-                  </circle>
-                  {n.kind === "zero" && <text x={n.x} y={n.y - n.r - 6} textAnchor="middle" fill="#ff2e88" fontSize="11" fontFamily="monospace">patient zero</text>}
-                </g>
-              );
-            })}
-          </svg>
-          <div className="flex flex-wrap gap-4 mt-3 font-mono text-xs text-mute">
-            <Legend c="#ff2e88" label="patient zero" />
-            <Legend c="#2ce5d6" label="infection station" />
-            <Legend c="#9dff1f" label="infected host (size = bag)" />
-          </div>
-        </>
-      )}
+      <div ref={wrapRef} className={`relative ${status === "ok" ? "" : "hidden"}`}>
+        <canvas
+          ref={canvasRef}
+          className="w-full rounded-xl border border-line bg-bg2 touch-none select-none"
+          style={{ height: 460 }}
+          onPointerMove={onMove} onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onLeave} onWheel={onWheel}
+        />
+        <div ref={tipRef} className="pointer-events-none absolute z-10 hidden rounded-lg border border-line bg-bg/95 px-2.5 py-1.5 text-xs font-mono leading-relaxed shadow-lg" style={{ display: "none" }} />
+        <div className="absolute bottom-2 left-2 flex flex-wrap gap-3 font-mono text-[11px] text-mute bg-bg/60 rounded-lg px-2 py-1">
+          <Legend c={COL.zero} label="patient zero" />
+          <Legend c={COL.station} label="station" />
+          <Legend c={COL.host} label="host" />
+        </div>
+      </div>
     </div>
   );
 }
 
 function Legend({ c, label }: { c: string; label: string }) {
-  return <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />{label}</span>;
+  return <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: c, boxShadow: `0 0 6px ${c}` }} />{label}</span>;
 }
