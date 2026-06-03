@@ -185,7 +185,9 @@ export default function Home() {
             <h2 className="font-display font-700 text-3xl sm:text-4xl mt-1 mb-2">infect yourself</h2>
             <p className="text-mute mb-8 max-w-2xl">
               Can&apos;t find anyone to infect you? Pay the station and dose yourself. The price climbs with
-              every infection — the longer you wait, the more it costs.
+              every infection — the longer you wait, the more it costs. And{" "}
+              <b className="text-ink">every fee is used to buy back &amp; burn $VIRUS</b> 🔥, so impatience
+              feeds the supply burn.
             </p>
             <Infect />
           </section>

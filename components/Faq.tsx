@@ -45,7 +45,8 @@ const ITEMS: QA[] = [
         you so you can buy. The price starts at <b>0.1 SOL</b> and ratchets up{" "}
         <b>+0.01 SOL every infection</b> — so the earlier you cave, the cheaper. Getting infected by a
         real holder is always free and always better; the station is just there so the outbreak never
-        stalls.
+        stalls. And <b>every self-infection fee is used to buy back &amp; burn $VIRUS</b> 🔥 — impatient
+        hosts shrink the supply for everyone.
       </>
     ),
   },

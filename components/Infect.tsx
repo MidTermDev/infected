@@ -69,6 +69,11 @@ export function Infect() {
         No takers? Infect yourself here: pay the fee and the station doses you straight from its reserve.
       </p>
 
+      <div className="mt-3 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-sm">
+        🔥 <b className="text-ink">Every self-infection fee buys back &amp; burns $VIRUS.</b> The more people
+        cave and dose themselves, the more supply gets torched.
+      </div>
+
       {st === undefined ? (
         <div className="mt-5 text-mute font-mono text-sm">reading station…</div>
       ) : st === null ? (
