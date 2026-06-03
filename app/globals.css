@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root { --toxic: #9dff1f; --teal: #2ce5d6; }
+
+html, body {
+  background-color: #070b0a;
+  color: #eafff2;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* faint petri grid + infection glows */
+body {
+  background-image:
+    radial-gradient(900px 600px at 78% -8%, rgba(157,255,31,0.10), transparent 60%),
+    radial-gradient(800px 600px at 10% 12%, rgba(255,46,136,0.10), transparent 60%),
+    radial-gradient(700px 700px at 50% 115%, rgba(44,229,214,0.08), transparent 60%),
+    radial-gradient(rgba(157,255,31,0.05) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 26px 26px;
+  background-attachment: fixed;
+}
+
+::selection { background: #9dff1f; color: #070b0a; }
+
+.font-display { font-family: 'Space Grotesk', sans-serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+@layer components {
+  .card { @apply rounded-2xl border border-line bg-panel/80 backdrop-blur; }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1
+           font-mono text-xs text-mute;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-display font-700
+           px-6 py-3 transition-all duration-150 active:scale-[0.98] select-none;
+  }
+  .btn-toxic { @apply btn bg-toxic text-bg; box-shadow: 0 0 0 1px #9dff1f, 0 0 28px rgba(157,255,31,0.45); }
+  .btn-toxic:hover { box-shadow: 0 0 0 1px #9dff1f, 0 0 40px rgba(157,255,31,0.7); transform: translateY(-2px); }
+  .btn-ghost { @apply btn border border-line bg-panel text-ink; }
+  .btn-ghost:hover { border-color: var(--teal); color: #fff; }
+}
+
+.glow-toxic { text-shadow: 0 0 24px rgba(157,255,31,0.55); }
+.glow-teal { text-shadow: 0 0 24px rgba(44,229,214,0.55); }
+.ring-toxic { box-shadow: 0 0 0 2px rgba(157,255,31,0.6), 0 0 80px rgba(157,255,31,0.18); }
+
+@keyframes float { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-16px) rotate(1deg)} }
+@keyframes marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+.anim-float { animation: float 6s ease-in-out infinite; }
+.anim-marquee { animation: marquee 22s linear infinite; }
+@media (prefers-reduced-motion: reduce){ .anim-float,.anim-marquee{animation:none} }
+
+.tnum { font-variant-numeric: tabular-nums; }
