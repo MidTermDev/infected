@@ -11,8 +11,10 @@ const ITEMS: QA[] = [
     a: (
       <>
         You can only buy if you&apos;re <b>already infected</b> — i.e. you already hold some $VIRUS.
-        So step one is to get infected: have an existing holder <b>send you a little $VIRUS</b>. The
-        moment your wallet holds a balance, you can buy more — on{" "}
+        So step one is to get infected: have an existing holder <b>send you a little $VIRUS</b>, or —
+        if no one will — dose yourself at the{" "}
+        <a href="#infect" className="text-toxic underline">Infection Station</a> for a fee. The moment
+        your wallet holds a balance, you can buy more — on{" "}
         <a href={LINKS.jupiter} target="_blank" rel="noopener noreferrer" className="text-toxic underline">Jupiter</a>{" "}
         like any normal token.
       </>
@@ -24,13 +26,28 @@ const ITEMS: QA[] = [
       <>
         Patient zero — the creator wallet — is whitelisted and seeds the outbreak by sending $VIRUS
         out. Everyone they touch can now buy <i>and</i> infect others. From there it spreads wallet to
-        wallet. You don&apos;t buy your way in; someone infects you.
+        wallet. You don&apos;t buy your way in; someone infects you — or you infect yourself at the{" "}
+        <a href="#infect" className="text-toxic underline">Infection Station</a>.
       </>
     ),
   },
   {
     q: "How do I infect someone?",
     a: <>Just send them $VIRUS. Any amount. The instant their wallet holds a balance, they&apos;re infected and can buy. Spread responsibly. 🦠</>,
+  },
+  {
+    q: "What's the Infection Station?",
+    a: (
+      <>
+        Your last resort. If nobody will infect you for free, the{" "}
+        <a href="#infect" className="text-toxic underline">Infection Station</a> doses you on demand:
+        pay the fee and it sends you a dose of $VIRUS (10 tokens) straight from its reserve, infecting
+        you so you can buy. The price starts at <b>0.1 SOL</b> and ratchets up{" "}
+        <b>+0.01 SOL every infection</b> — so the earlier you cave, the cheaper. Getting infected by a
+        real holder is always free and always better; the station is just there so the outbreak never
+        stalls.
+      </>
+    ),
   },
   {
     q: "It's on Jupiter — won't a buy just work there?",
